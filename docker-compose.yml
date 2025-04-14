@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: provisioner-api
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/provisioner
+      - QUEUE_HOST=redis
+      - QUEUE_PORT=6379
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+    volumes:
+      # Mount AWS and GCP credentials if needed
+      - ${HOME}/.aws:/root/.aws:ro
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/gcp-credentials.json:ro
+    env_file:
+      - .env.docker
+    command: >
+      sh -c "npx prisma migrate deploy && npm start"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: provisioner-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/provisioner
+      - QUEUE_HOST=redis
+      - QUEUE_PORT=6379
+      - NODE_ENV=production
+    volumes:
+      # Mount AWS and GCP credentials if needed
+      - ${HOME}/.aws:/root/.aws:ro
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/gcp-credentials.json:ro
+    env_file:
+      - .env.docker
+    command: npm run worker
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: provisioner-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=provisioner
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Bee-Queue
+  redis:
+    image: redis:7-alpine
+    container_name: provisioner-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

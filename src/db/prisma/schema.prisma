@@ -1,0 +1,68 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Resource model to track all provisioned resources
+model Resource {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  provider    Provider
+  type        String   // e.g., "EC2", "S3", "ComputeEngine"
+  status      Status   @default(PENDING)
+  config      Json     // Configuration for the resource
+  metadata    Json?    // Additional metadata about the resource
+  resourceId  String?  // ID of the resource in the cloud provider
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  jobs        Job[]
+}
+
+// Job model to track background jobs
+model Job {
+  id         String    @id @default(uuid())
+  resourceId String
+  resource   Resource  @relation(fields: [resourceId], references: [id])
+  type       JobType
+  status     JobStatus @default(PENDING)
+  result     Json?     // Result of the job
+  error      String?   // Error message if job failed
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+enum Provider {
+  AWS
+  GCP
+}
+
+enum Status {
+  PENDING
+  CREATING
+  ACTIVE
+  UPDATING
+  DELETING
+  DELETED
+  FAILED
+}
+
+enum JobType {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
