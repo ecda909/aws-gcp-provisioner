@@ -1,5 +1,7 @@
 const resourceRoutes = require('./routes/resourceRoutes');
 const jobRoutes = require('./routes/jobRoutes');
+const templateRoutes = require('./routes/templateRoutes');
+const deploymentRoutes = require('./routes/deploymentRoutes');
 
 /**
  * Register all API routes
@@ -10,7 +12,9 @@ async function routes(fastify, options) {
   // Register routes
   fastify.register(resourceRoutes, { prefix: '/resources' });
   fastify.register(jobRoutes, { prefix: '/jobs' });
-  
+  fastify.register(templateRoutes, { prefix: '/templates' });
+  fastify.register(deploymentRoutes, { prefix: '/deployments' });
+
   // Root route
   fastify.get('/', {
     schema: {
@@ -22,7 +26,7 @@ async function routes(fastify, options) {
           properties: {
             message: { type: 'string' },
             version: { type: 'string' },
-            endpoints: { 
+            endpoints: {
               type: 'array',
               items: { type: 'string' }
             }
@@ -37,6 +41,8 @@ async function routes(fastify, options) {
         endpoints: [
           '/api/resources',
           '/api/jobs',
+          '/api/templates',
+          '/api/deployments',
           '/health',
           '/documentation'
         ]

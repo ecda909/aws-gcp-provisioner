@@ -25,6 +25,7 @@ services:
       # Mount AWS and GCP credentials if needed
       - ${HOME}/.aws:/root/.aws:ro
       - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/gcp-credentials.json:ro
+      - ./terraform_workdir:/app/terraform_workdir
     env_file:
       - .env.docker
     command: >

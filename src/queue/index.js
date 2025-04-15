@@ -26,7 +26,7 @@ module.exports = {
   createResourceQueue,
   updateResourceQueue,
   deleteResourceQueue,
-  
+
   // Helper function to get the appropriate queue based on job type
   getQueueByJobType: (jobType) => {
     switch (jobType) {
@@ -36,6 +36,8 @@ module.exports = {
         return updateResourceQueue;
       case 'DELETE':
         return deleteResourceQueue;
+      case 'FAILOVER':
+        return createResourceQueue; // Reuse create queue for failover
       default:
         throw new Error(`Unknown job type: ${jobType}`);
     }

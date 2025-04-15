@@ -9,6 +9,9 @@ A microservice that provides an API to create, update, and destroy AWS and GCP r
 - Database-driven state tracking
 - Support for AWS resources (EC2, S3)
 - Support for GCP resources (Compute Engine, Disk)
+- Template-based deployments using Terraform modules
+- Cross-region failover capabilities
+- Parameterized infrastructure templates
 
 ## Architecture
 
@@ -42,6 +45,7 @@ A microservice that provides an API to create, update, and destroy AWS and GCP r
 - Redis (for Bee-Queue)
 - AWS credentials (for AWS resources)
 - GCP credentials (for GCP resources)
+- Terraform CLI (for template-based deployments)
 
 ## Installation
 
@@ -103,7 +107,9 @@ http://localhost:3000/documentation
 
 ## Example Usage
 
-### Create an EC2 Instance
+### Direct Resource Provisioning
+
+#### Create an EC2 Instance
 
 ```bash
 curl -X POST http://localhost:3000/api/resources \
@@ -121,7 +127,7 @@ curl -X POST http://localhost:3000/api/resources \
   }'
 ```
 
-### Create a GCP Compute Engine Instance
+#### Create a GCP Compute Engine Instance
 
 ```bash
 curl -X POST http://localhost:3000/api/resources \
@@ -138,6 +144,45 @@ curl -X POST http://localhost:3000/api/resources \
       "sourceImage": "projects/debian-cloud/global/images/family/debian-10"
     }
   }'
+```
+
+### Template-Based Deployments
+
+#### Create a Template
+
+```bash
+curl -X POST http://localhost:3000/api/templates \
+  -H "Content-Type: application/json" \
+  -d @examples/templates/aws-ec2-template.json
+```
+
+#### Deploy Using a Template
+
+```bash
+curl -X POST http://localhost:3000/api/deployments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-ec2-deployment",
+    "description": "My EC2 deployment from template",
+    "templateId": "TEMPLATE_ID",
+    "primaryRegion": "us-east-1",
+    "failoverRegion": "us-west-2",
+    "parameters": {
+      "name": "my-ec2-instance",
+      "instance_type": "t2.micro",
+      "ami": "ami-0c55b159cbfafe1f0",
+      "region": "us-east-1",
+      "key_name": "my-key-pair",
+      "associate_public_ip_address": true
+    }
+  }'
+```
+
+#### Initiate Failover
+
+```bash
+curl -X POST http://localhost:3000/api/deployments/DEPLOYMENT_ID/failover \
+  -H "Content-Type: application/json"
 ```
 
 ## License
