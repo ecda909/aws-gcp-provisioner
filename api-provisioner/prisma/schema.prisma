@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Deployment model to track Terraform deployments
+model Deployment {
+  id                String    @id @default(uuid())
+  name              String
+  description       String?
+  provider          String    // AWS or GCP
+  region            String    // Current region (e.g., us-east-1)
+  status            String    // PENDING, RUNNING, COMPLETED, FAILED
+  parameters        Json      // Terraform variables
+  outputs           Json?     // Terraform outputs
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  credentialId      String
+  credential        Credential @relation(fields: [credentialId], references: [id])
+  failoverRegion    String?   // Region to failover to
+  failoverProvider  String?   // Provider to failover to (AWS or GCP)
+  terraformPath     String    // Path to Terraform files in the repository
+  gitRepo           String    // Git repository URL
+  gitBranch         String    // Git branch
+}
+
+// Credential model to store AWS/GCP credentials
+model Credential {
+  id                String    @id @default(uuid())
+  name              String    @unique
+  provider          String    // AWS or GCP
+  credentials       Json      // AWS or GCP credentials
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deployments       Deployment[]
+}
+
+// OperationLog model to track operations
+model OperationLog {
+  id                String    @id @default(uuid())
+  deploymentId      String?
+  operation         String    // DEPLOY, SWITCH_REGION, FAILOVER
+  status            String    // PENDING, RUNNING, COMPLETED, FAILED
+  details           Json?     // Additional details
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}

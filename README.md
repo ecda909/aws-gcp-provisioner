@@ -1,188 +1,130 @@
-# AWS/GCP Provisioner Microservice
+# AWS/GCP Terraform Provisioner API
 
-A microservice that provides an API to create, update, and destroy AWS and GCP resources.
+A Fastify API for deploying Terraform resources to AWS and GCP with region switching and cross-cloud failover capabilities.
 
 ## Features
 
-- RESTful API for resource provisioning
-- Asynchronous job processing
-- Database-driven state tracking
-- Support for AWS resources (EC2, S3)
-- Support for GCP resources (Compute Engine, Disk)
-- Template-based deployments using Terraform modules
-- Cross-region failover capabilities
-- Parameterized infrastructure templates
+- Deploy Terraform resources to AWS or GCP
+- Switch resources between regions
+- Failover from AWS to GCP or vice versa
+- Manage cloud provider credentials
+- Track deployment operations
 
 ## Architecture
 
-```
-+------------------+       +--------------------+
-|  User / Client   | --->  | Fastify HTTP Server| ---> Creates new job in Bee-Queue
-+------------------+       +--------------------+
-                               |  (returns job/resource ID to client)
-                               v
-                         +-----------+
-                         | Bee-Queue |
-                         +-----------+
-                               |
-                               v
-                   +--------------------+
-                   | Worker Processes  |
-                   |    (AWS/GCP SDK)  |
-                   +--------------------+
-                             |
-                             v
-                   +--------------------+
-                   |  PostgreSQL DB    |
-                   |  (Prisma ORM)     |
-                   +--------------------+
-```
+The application consists of the following components:
+
+- **API**: Fastify-based REST API for managing deployments and credentials
+- **Database**: PostgreSQL database for storing deployment and credential information
+- **Terraform Service**: Service for executing Terraform commands
 
 ## Prerequisites
 
-- Node.js (v14+ recommended)
-- PostgreSQL database
-- Redis (for Bee-Queue)
-- AWS credentials (for AWS resources)
-- GCP credentials (for GCP resources)
-- Terraform CLI (for template-based deployments)
+- Docker and Docker Compose
+- AWS account with appropriate permissions
+- GCP account with appropriate permissions
+- Git repository with Terraform configurations
 
-## Installation
+## Getting Started
 
-1. Clone the repository
+1. Clone the repository:
 
 ```bash
 git clone https://github.com/yourusername/aws-gcp-provisioner.git
 cd aws-gcp-provisioner
 ```
 
-2. Install dependencies
+2. Start the application using Docker Compose:
 
 ```bash
-npm install
+docker-compose up -d
 ```
 
-3. Set up environment variables
-
-Copy the `.env.example` file to `.env` and update the values:
+3. Initialize the database:
 
 ```bash
-cp .env.example .env
+docker-compose exec api npm run prisma:migrate
 ```
 
-4. Set up the database
+4. Access the API at http://localhost:3000
 
-```bash
-npm run prisma:migrate
-npm run prisma:generate
-```
+## API Endpoints
 
-## Running the Service
+### Deployments
 
-### Development Mode
+- `POST /api/deployments`: Create a new deployment
+- `GET /api/deployments`: List all deployments
+- `GET /api/deployments/:id`: Get deployment details
+- `POST /api/deployments/:id/switch-region`: Switch deployment to another region
+- `POST /api/deployments/:id/failover`: Failover deployment to another cloud provider
 
-```bash
-npm run dev
-```
+### Credentials
 
-### Production Mode
-
-```bash
-npm start
-```
-
-### Worker Process
-
-```bash
-npm run worker
-```
-
-## API Documentation
-
-Once the service is running, you can access the Swagger documentation at:
-
-```
-http://localhost:3000/documentation
-```
+- `POST /api/credentials`: Create new cloud provider credentials
+- `GET /api/credentials`: List all credentials
+- `GET /api/credentials/:id`: Get credential details
+- `PUT /api/credentials/:id`: Update credential
+- `DELETE /api/credentials/:id`: Delete credential
 
 ## Example Usage
 
-### Direct Resource Provisioning
-
-#### Create an EC2 Instance
+### Creating AWS Credentials
 
 ```bash
-curl -X POST http://localhost:3000/api/resources \
+curl -X POST http://localhost:3000/api/credentials \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "my-ec2-instance",
-    "description": "My EC2 instance",
+    "name": "my-aws-credentials",
     "provider": "AWS",
-    "type": "EC2",
-    "config": {
-      "instanceType": "t2.micro",
-      "imageId": "ami-0c55b159cbfafe1f0",
-      "keyName": "my-key-pair"
+    "credentials": {
+      "accessKeyId": "YOUR_AWS_ACCESS_KEY",
+      "secretAccessKey": "YOUR_AWS_SECRET_KEY"
     }
   }'
 ```
 
-#### Create a GCP Compute Engine Instance
-
-```bash
-curl -X POST http://localhost:3000/api/resources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-compute-instance",
-    "description": "My Compute Engine instance",
-    "provider": "GCP",
-    "type": "ComputeEngine",
-    "config": {
-      "project": "my-gcp-project",
-      "zone": "us-central1-a",
-      "machineType": "e2-medium",
-      "sourceImage": "projects/debian-cloud/global/images/family/debian-10"
-    }
-  }'
-```
-
-### Template-Based Deployments
-
-#### Create a Template
-
-```bash
-curl -X POST http://localhost:3000/api/templates \
-  -H "Content-Type: application/json" \
-  -d @examples/templates/aws-ec2-template.json
-```
-
-#### Deploy Using a Template
+### Creating a Deployment
 
 ```bash
 curl -X POST http://localhost:3000/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "my-ec2-deployment",
-    "description": "My EC2 deployment from template",
-    "templateId": "TEMPLATE_ID",
-    "primaryRegion": "us-east-1",
-    "failoverRegion": "us-west-2",
+    "name": "weather-app-deployment",
+    "provider": "AWS",
+    "region": "us-east-1",
     "parameters": {
-      "name": "my-ec2-instance",
-      "instance_type": "t2.micro",
-      "ami": "ami-0c55b159cbfafe1f0",
-      "region": "us-east-1",
-      "key_name": "my-key-pair",
-      "associate_public_ip_address": true
-    }
+      "project_name": "weather-analysis",
+      "environment": "dev",
+      "instance_type": "t2.micro"
+    },
+    "credentialId": "YOUR_CREDENTIAL_ID",
+    "failoverRegion": "us-west-1",
+    "failoverProvider": "GCP",
+    "terraformPath": "/terraform/aws",
+    "gitRepo": "https://github.com/Blankcut/aws-gcp-terraform-weather-app.git",
+    "gitBranch": "main"
   }'
 ```
 
-#### Initiate Failover
+### Switching Region
 
 ```bash
-curl -X POST http://localhost:3000/api/deployments/DEPLOYMENT_ID/failover \
-  -H "Content-Type: application/json"
+curl -X POST http://localhost:3000/api/deployments/YOUR_DEPLOYMENT_ID/switch-region \
+  -H "Content-Type: application/json" \
+  -d '{
+    "region": "us-west-1"
+  }'
+```
+
+### Failing Over to Another Cloud Provider
+
+```bash
+curl -X POST http://localhost:3000/api/deployments/YOUR_DEPLOYMENT_ID/failover \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "GCP",
+    "region": "us-east4"
+  }'
 ```
 
 ## License
