@@ -1,0 +1,50 @@
+{{- if not .Values.database.external -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aws-gcp-provisioner.fullname" . }}-db
+  labels:
+    {{- include "aws-gcp-provisioner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aws-gcp-provisioner.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        {{- include "aws-gcp-provisioner.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      serviceAccountName: {{ include "aws-gcp-provisioner.serviceAccountName" . }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.database.internal.image.repository }}:{{ .Values.database.internal.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.database.internal.username | quote }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.database.internal.password | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.database.internal.database | quote }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            {{- toYaml .Values.database.internal.resources | nindent 12 }}
+      volumes:
+        - name: postgres-data
+          {{- if .Values.database.internal.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "aws-gcp-provisioner.fullname" . }}-postgres-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

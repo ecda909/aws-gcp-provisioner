@@ -1,0 +1,92 @@
+# Default values for aws-gcp-provisioner.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+api:
+  replicaCount: 1
+  image:
+    repository: us-east4-docker.pkg.dev/blankcut/fastify-api-provisioners/api-provisioner
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  env:
+    NODE_ENV: production
+    PORT: 3000
+    TERRAFORM_DIR: /app/terraform-workspaces
+    AWS_REGION: us-east-1
+  # Sensitive environment variables that will be stored in a Secret
+  secrets:
+    AWS_ACCESS_KEY_ID: ""
+    AWS_SECRET_ACCESS_KEY: ""
+    GIT_USERNAME: ""
+    GIT_PAT: ""
+  # Volume for terraform workspaces
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 1Gi
+  # Git repository for terraform configurations
+  gitRepo:
+    url: "https://github.com/Blankcut/aws-gcp-terraform-weather-app.git"
+    branch: "main"
+
+database:
+  # Use external database (if false, will deploy a PostgreSQL instance)
+  external: false
+  # External database connection details (if external is true)
+  externalHost: ""
+  externalPort: 5432
+  externalDatabase: "terraform_provisioner"
+  externalUsername: "postgres"
+  externalPassword: ""
+  # Internal PostgreSQL configuration (if external is false)
+  internal:
+    image:
+      repository: postgres
+      tag: 14-alpine
+    persistence:
+      enabled: true
+      storageClass: ""
+      size: 8Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    username: postgres
+    password: postgres
+    database: terraform_provisioner
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""

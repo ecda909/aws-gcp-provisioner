@@ -1,0 +1,15 @@
+apiVersion: v2
+name: aws-gcp-provisioner
+description: A Helm chart for the AWS/GCP Terraform Provisioner API
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - terraform
+  - aws
+  - gcp
+  - fastify
+  - provisioner
+maintainers:
+  - name: Blankcut
+    email: user@example.com

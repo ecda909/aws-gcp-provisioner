@@ -1,0 +1,19 @@
+{{- if not .Values.database.external -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aws-gcp-provisioner.fullname" . }}-db
+  labels:
+    {{- include "aws-gcp-provisioner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "aws-gcp-provisioner.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+{{- end }}

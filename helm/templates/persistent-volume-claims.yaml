@@ -1,0 +1,38 @@
+{{- if and (not .Values.database.external) .Values.database.internal.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "aws-gcp-provisioner.fullname" . }}-postgres-data
+  labels:
+    {{- include "aws-gcp-provisioner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.database.internal.persistence.storageClass }}
+  storageClassName: {{ .Values.database.internal.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.database.internal.persistence.size }}
+{{- end }}
+
+{{- if .Values.api.persistence.enabled -}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "aws-gcp-provisioner.fullname" . }}-terraform-workspaces
+  labels:
+    {{- include "aws-gcp-provisioner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.api.persistence.storageClass }}
+  storageClassName: {{ .Values.api.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.api.persistence.size }}
+{{- end }}
