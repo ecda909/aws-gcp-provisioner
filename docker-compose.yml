@@ -15,7 +15,7 @@ services:
       - AWS_ACCESS_KEY_ID=
       - AWS_SECRET_ACCESS_KEY=
       - AWS_REGION=us-east-1
-      - GIT_USERNAME=ecda909
+      - GIT_USERNAME=
       - GIT_PAT=
     volumes:
       - ./api-provisioner:/app

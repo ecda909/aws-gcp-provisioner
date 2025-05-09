@@ -57,6 +57,7 @@ docker-compose exec api npm run prisma:migrate
 - `GET /api/deployments/:id`: Get deployment details
 - `POST /api/deployments/:id/switch-region`: Switch deployment to another region
 - `POST /api/deployments/:id/failover`: Failover deployment to another cloud provider
+- `DELETE /api/deployments/:id`: Deprovision (destroy) a deployment
 
 ### Credentials
 
@@ -125,6 +126,12 @@ curl -X POST http://localhost:3000/api/deployments/YOUR_DEPLOYMENT_ID/failover \
     "provider": "GCP",
     "region": "us-east4"
   }'
+```
+
+### Deprovisioning a Deployment
+
+```bash
+curl -X DELETE http://localhost:3000/api/deployments/YOUR_DEPLOYMENT_ID
 ```
 
 ## License

@@ -46,8 +46,8 @@ async function initWorkspace() {
 async function cloneRepository(repoUrl, branch, workspacePath) {
   try {
     // Get Git credentials from environment variables
-    const gitUsername = process.env.GIT_USERNAME || 'ecda909';
-    const gitPat = process.env.GIT_PAT || 'youtoken';
+    const gitUsername = process.env.GIT_USERNAME || '';
+    const gitPat = process.env.GIT_PAT || '';
 
     // Add credentials to the URL if available
     let repoUrlWithAuth = repoUrl;
@@ -115,7 +115,23 @@ async function setupCredentials(credentials, provider) {
     } else if (provider === 'GCP') {
       // Create a temporary service account key file
       const keyFilePath = path.join(TERRAFORM_DIR, 'gcp-key.json');
-      await fs.writeFile(keyFilePath, JSON.stringify(credentials));
+
+      // Convert camelCase to snake_case for GCP credentials
+      const formattedCredentials = {
+        type: credentials.type || 'service_account',
+        project_id: credentials.projectId || credentials.project_id,
+        private_key_id: credentials.privateKeyId || credentials.private_key_id,
+        private_key: credentials.privateKey || credentials.private_key,
+        client_email: credentials.clientEmail || credentials.client_email,
+        client_id: credentials.clientId || credentials.client_id,
+        auth_uri: credentials.authUri || credentials.auth_uri,
+        token_uri: credentials.tokenUri || credentials.token_uri,
+        auth_provider_x509_cert_url: credentials.authProviderX509CertUrl || credentials.auth_provider_x509_cert_url,
+        client_x509_cert_url: credentials.clientX509CertUrl || credentials.client_x509_cert_url,
+        universe_domain: credentials.universeDomain || credentials.universe_domain || 'googleapis.com'
+      };
+
+      await fs.writeFile(keyFilePath, JSON.stringify(formattedCredentials));
 
       // Set environment variable for Terraform GCP provider
       process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
@@ -168,22 +184,6 @@ async function deploy(deploymentId) {
   console.log(`Starting deployment for ${deploymentId}`);
 
   try {
-    // Update deployment status
-    await prisma.deployment.update({
-      where: { id: deploymentId },
-      data: { status: 'RUNNING' }
-    });
-
-    // Update operation log
-    await prisma.operationLog.updateMany({
-      where: {
-        deploymentId,
-        operation: 'DEPLOY',
-        status: 'PENDING'
-      },
-      data: { status: 'RUNNING' }
-    });
-
     // Get deployment details
     const deployment = await prisma.deployment.findUnique({
       where: { id: deploymentId },
@@ -207,54 +207,25 @@ async function deploy(deploymentId) {
     // Set up credentials
     await setupCredentials(deployment.credential.credentials, deployment.provider);
 
-    // Map region names if needed
-    let mappedRegion = deployment.region;
-    if (deployment.provider === 'AWS' && !deployment.region.startsWith('us-east-') && !deployment.region.startsWith('us-west-')) {
-      // Map GCP regions to AWS regions
-      const regionMap = {
-        'us-central1': 'us-east-1',
-        'us-east4': 'us-east-1',
-        'us-west1': 'us-west-1',
-        'us-west2': 'us-west-2',
-        'us-west3': 'us-west-2',
-        'us-west4': 'us-west-2',
-        'europe-west1': 'eu-west-1',
-        'europe-west2': 'eu-west-2',
-        'europe-west3': 'eu-central-1',
-        'asia-east1': 'ap-northeast-1',
-        'asia-northeast1': 'ap-northeast-1',
-        'asia-southeast1': 'ap-southeast-1'
-      };
-      mappedRegion = regionMap[deployment.region] || 'us-east-1';
-    } else if (deployment.provider === 'GCP' && !deployment.region.includes('central') && !deployment.region.includes('east4')) {
-      // Map AWS regions to GCP regions
-      const regionMap = {
-        'us-east-1': 'us-east4',
-        'us-east-2': 'us-east4',
-        'us-west-1': 'us-west1',
-        'us-west-2': 'us-west2',
-        'eu-west-1': 'europe-west1',
-        'eu-west-2': 'europe-west2',
-        'eu-central-1': 'europe-west3',
-        'ap-northeast-1': 'asia-northeast1',
-        'ap-southeast-1': 'asia-southeast1'
-      };
-      mappedRegion = regionMap[deployment.region] || 'us-east4';
-    }
-
-    // Create Terraform variables file
-    const parameters = {
-      ...deployment.parameters,
-      region: mappedRegion
-    };
-
-    // Add project_id for GCP if not present
-    if (deployment.provider === 'GCP' && !parameters.project_id) {
-      parameters.project_id = deployment.credential.credentials.projectId || 'blankcut';
+    // Determine the correct terraform path based on provider
+    let terraformPath;
+    if (deployment.terraformPath) {
+      terraformPath = deployment.terraformPath;
+    } else {
+      // Default paths if not specified
+      terraformPath = deployment.provider === 'AWS' ? '/terraform/aws' : '/terraform/gcp';
     }
 
     // Navigate to the Terraform module directory
-    const terraformModulePath = path.join(workspacePath, deployment.terraformPath);
+    const terraformModulePath = path.join(workspacePath, terraformPath);
+
+    // Prepare parameters
+    let parameters = { ...deployment.parameters };
+
+    // Add provider-specific parameters
+    if (deployment.provider === 'GCP' && !parameters.project_id) {
+      parameters.project_id = deployment.credential.credentials.projectId || 'default-project';
+    }
 
     // Create Terraform variables file
     await createTerraformVars(parameters, terraformModulePath);
@@ -274,20 +245,8 @@ async function deploy(deploymentId) {
       where: { id: deploymentId },
       data: {
         status: 'COMPLETED',
+        terraformPath: terraformPath,
         outputs
-      }
-    });
-
-    // Update operation log
-    await prisma.operationLog.updateMany({
-      where: {
-        deploymentId,
-        operation: 'DEPLOY',
-        status: 'RUNNING'
-      },
-      data: {
-        status: 'COMPLETED',
-        details: { outputs }
       }
     });
 
@@ -544,9 +503,9 @@ async function failover(deploymentId, newProvider, newRegion, request = {}) {
     // Determine new Terraform module path based on new provider
     let newTerraformPath;
     if (newProvider === 'AWS') {
-      newTerraformPath = deployment.terraformPath.replace(/\/gcp\//i, '/aws/');
+      newTerraformPath = '/terraform/aws';
     } else {
-      newTerraformPath = deployment.terraformPath.replace(/\/aws\//i, '/gcp/');
+      newTerraformPath = '/terraform/gcp';
     }
 
     // Get the appropriate credential for the new provider
@@ -562,74 +521,18 @@ async function failover(deploymentId, newProvider, newRegion, request = {}) {
     // Set up credentials for new provider
     await setupCredentials(credential.credentials, newProvider);
 
-    // Map region names between providers if needed
-    let mappedRegion = newRegion;
-    if (newProvider === 'AWS' && !newRegion.startsWith('us-east-') && !newRegion.startsWith('us-west-')) {
-      // Map GCP regions to AWS regions
-      const regionMap = {
-        'us-central1': 'us-east-1',
-        'us-east4': 'us-east-1',
-        'us-west1': 'us-west-1',
-        'us-west2': 'us-west-2',
-        'us-west3': 'us-west-2',
-        'us-west4': 'us-west-2',
-        'europe-west1': 'eu-west-1',
-        'europe-west2': 'eu-west-2',
-        'europe-west3': 'eu-central-1',
-        'asia-east1': 'ap-northeast-1',
-        'asia-northeast1': 'ap-northeast-1',
-        'asia-southeast1': 'ap-southeast-1'
-      };
-      mappedRegion = regionMap[newRegion] || 'us-east-1';
-    } else if (newProvider === 'GCP' && !newRegion.includes('central') && !newRegion.includes('east4')) {
-      // Map AWS regions to GCP regions
-      const regionMap = {
-        'us-east-1': 'us-east4',
-        'us-east-2': 'us-east4',
-        'us-west-1': 'us-west1',
-        'us-west-2': 'us-west2',
-        'eu-west-1': 'europe-west1',
-        'eu-west-2': 'europe-west2',
-        'eu-central-1': 'europe-west3',
-        'ap-northeast-1': 'asia-northeast1',
-        'ap-southeast-1': 'asia-southeast1'
-      };
-      mappedRegion = regionMap[newRegion] || 'us-east4';
-    }
+    // Navigate to the new Terraform module directory
+    const newTerraformModulePath = path.join(workspacePath, newTerraformPath);
 
     // Create Terraform variables file with mapped region
     const parameters = {
       ...deployment.parameters,
-      region: mappedRegion
+      region: newRegion
     };
 
     // Add project_id for GCP if not present
     if (newProvider === 'GCP' && !parameters.project_id) {
-      parameters.project_id = credential.credentials.projectId || 'blankcut';
-    }
-
-    // Navigate to the new Terraform module directory
-    let newTerraformModulePath = path.join(workspacePath, newTerraformPath);
-
-    // Check if the directory exists
-    try {
-      await fs.access(newTerraformModulePath);
-    } catch (error) {
-      // If the directory doesn't exist, it might be because we need to use a different path
-      // For example, if we're trying to failover to GCP but the /terraform/gcp directory doesn't exist
-      if (newProvider === 'GCP') {
-        newTerraformPath = '/terraform/gcp';
-      } else {
-        newTerraformPath = '/terraform/aws';
-      }
-      console.log(`Terraform module path not found, trying ${newTerraformPath} instead`);
-      newTerraformModulePath = path.join(workspacePath, newTerraformPath);
-
-      try {
-        await fs.access(newTerraformModulePath);
-      } catch (innerError) {
-        throw new Error(`Could not find Terraform module path: ${newTerraformPath}`);
-      }
+      parameters.project_id = credential.credentials.projectId || 'default-project';
     }
 
     // Create Terraform variables file
@@ -701,8 +604,117 @@ async function failover(deploymentId, newProvider, newRegion, request = {}) {
   }
 }
 
+/**
+ * Deprovision (destroy) Terraform resources
+ * @param {string} deploymentId - Deployment ID
+ */
+async function deprovision(deploymentId) {
+  console.log(`Starting deprovisioning for ${deploymentId}`);
+
+  try {
+    // Get deployment details
+    const deployment = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      include: { credential: true }
+    });
+
+    if (!deployment) {
+      throw new Error('Deployment not found');
+    }
+
+    // Update deployment status
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: { status: 'RUNNING' }
+    });
+
+    // Create operation log
+    await prisma.operationLog.create({
+      data: {
+        deploymentId,
+        operation: 'DEPROVISION',
+        status: 'RUNNING',
+        details: {
+          provider: deployment.provider,
+          region: deployment.region
+        }
+      }
+    });
+
+    // Check if workspace exists
+    const workspacePath = path.join(TERRAFORM_DIR, deploymentId);
+    try {
+      await fs.access(workspacePath);
+    } catch (error) {
+      // If workspace doesn't exist, clone repository
+      await fs.mkdir(workspacePath, { recursive: true });
+      await cloneRepository(deployment.gitRepo, deployment.gitBranch, workspacePath);
+    }
+
+    // Set up credentials
+    await setupCredentials(deployment.credential.credentials, deployment.provider);
+
+    // Navigate to the Terraform module directory
+    const terraformModulePath = path.join(workspacePath, deployment.terraformPath);
+
+    // Initialize Terraform
+    await runTerraformCommand('init', terraformModulePath);
+
+    // Destroy resources
+    await runTerraformCommand('destroy -auto-approve', terraformModulePath);
+
+    // Update deployment status
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: {
+        status: 'DEPROVISIONED',
+        outputs: null
+      }
+    });
+
+    // Update operation log
+    await prisma.operationLog.updateMany({
+      where: {
+        deploymentId,
+        operation: 'DEPROVISION',
+        status: 'RUNNING'
+      },
+      data: {
+        status: 'COMPLETED'
+      }
+    });
+
+    console.log(`Deprovisioning ${deploymentId} completed successfully`);
+    return true;
+  } catch (error) {
+    console.error(`Deprovisioning ${deploymentId} failed:`, error);
+
+    // Update deployment status
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: { status: 'FAILED' }
+    });
+
+    // Update operation log
+    await prisma.operationLog.updateMany({
+      where: {
+        deploymentId,
+        operation: 'DEPROVISION',
+        status: 'RUNNING'
+      },
+      data: {
+        status: 'FAILED',
+        details: { error: error.message }
+      }
+    });
+
+    throw error;
+  }
+}
+
 module.exports = {
   deploy,
   switchRegion,
-  failover
+  failover,
+  deprovision
 };

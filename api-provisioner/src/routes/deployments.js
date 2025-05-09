@@ -317,4 +317,66 @@ module.exports = async function (fastify, opts) {
       return reply.code(500).send({ error: 'Failed to initiate failover' });
     }
   });
+
+  // Deprovision (destroy) a deployment
+  fastify.delete('/:id', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    try {
+      const deployment = await prisma.deployment.findUnique({
+        where: { id }
+      });
+
+      if (!deployment) {
+        return reply.code(404).send({ error: 'Deployment not found' });
+      }
+
+      if (deployment.status === 'RUNNING') {
+        return reply.code(400).send({ error: 'Deployment is currently running' });
+      }
+
+      // Update deployment status
+      await prisma.deployment.update({
+        where: { id },
+        data: { status: 'PENDING' }
+      });
+
+      // Create operation log
+      await prisma.operationLog.create({
+        data: {
+          deploymentId: id,
+          operation: 'DEPROVISION',
+          status: 'PENDING',
+          details: {
+            provider: deployment.provider,
+            region: deployment.region
+          }
+        }
+      });
+
+      // Start deprovisioning process asynchronously
+      terraformService.deprovision(id).catch(err => {
+        fastify.log.error(`Deprovisioning error for ${id}: ${err.message}`);
+      });
+
+      return reply.send({
+        id,
+        status: 'PENDING',
+        message: `Deprovisioning ${deployment.provider} resources in ${deployment.region}`
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to initiate deprovisioning' });
+    }
+  });
 };
